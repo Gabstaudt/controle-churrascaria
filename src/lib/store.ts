@@ -1,4 +1,3 @@
-// localStorage-based persistence layer
 
 export interface User {
   id: string;
@@ -41,6 +40,16 @@ export const DEFAULT_ADMIN_PERMISSIONS: UserPermissions = {
   phonebook: true, approveProducts: true, exportData: true, manageUsers: true,
 };
 
+export const DEFAULT_ADMIN_CREDENTIALS = {
+  code: 'admin',
+  password: 'admin123',
+};
+
+export const DEFAULT_EMPLOYEE_CREDENTIALS = {
+  code: 'funcionario',
+  password: 'func123',
+};
+
 export interface Product {
   id: string;
   name: string;
@@ -54,6 +63,7 @@ export interface Product {
 
 export interface FreezerItem {
   productId: string;
+  productCode: string;
   productName: string;
   quantity: number;
 }
@@ -186,17 +196,46 @@ export function getUsers(): User[] {
 }
 export function setUsers(users: User[]) { set('churras_users', users); }
 export function getUserByCode(code: string) { return getUsers().find(u => u.code === code); }
+export function getActiveEmployeeByCode(code: string) {
+  const normalized = code.trim().toLowerCase();
+  return getUsers().find(
+    u => u.code.trim().toLowerCase() === normalized && u.role === 'employee' && u.status === 'active',
+  );
+}
 
 export function initDefaultAdmin() {
   const users = getUsers();
-  if (!users.some(u => u.role === 'admin')) {
+  const adminByCode = users.find(u => u.code === DEFAULT_ADMIN_CREDENTIALS.code);
+  if (adminByCode) {
+    adminByCode.password = DEFAULT_ADMIN_CREDENTIALS.password;
+    adminByCode.role = 'admin';
+    adminByCode.status = 'active';
+    adminByCode.permissions = { ...DEFAULT_ADMIN_PERMISSIONS };
+  } else {
     users.push({
-      id: uid(), name: 'Administrador', code: 'admin', password: 'admin123',
+      id: uid(), name: 'Administrador', code: DEFAULT_ADMIN_CREDENTIALS.code, password: DEFAULT_ADMIN_CREDENTIALS.password,
       role: 'admin', position: 'Gerente', status: 'active', baseSalary: 5000,
       createdAt: now(), permissions: { ...DEFAULT_ADMIN_PERMISSIONS },
     });
-    setUsers(users);
   }
+
+  const employeeByCode = users.find(u => u.code === DEFAULT_EMPLOYEE_CREDENTIALS.code);
+  if (!employeeByCode) {
+    users.push({
+      id: uid(),
+      name: 'Funcionario Exemplo',
+      code: DEFAULT_EMPLOYEE_CREDENTIALS.code,
+      password: DEFAULT_EMPLOYEE_CREDENTIALS.password,
+      role: 'employee',
+      position: 'Atendente',
+      status: 'active',
+      baseSalary: 1800,
+      createdAt: now(),
+      permissions: { ...DEFAULT_EMPLOYEE_PERMISSIONS },
+    });
+  }
+
+  setUsers(users);
 }
 
 // Products

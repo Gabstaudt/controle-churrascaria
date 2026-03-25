@@ -21,9 +21,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => { initDefaultAdmin(); }, []);
 
   const login = useCallback((code: string, password: string) => {
+    const normalizedCode = code.trim();
+    const normalizedPassword = password.trim();
     const users = getUsers();
-    const user = users.find(u => u.code === code && u.password === password && u.status === 'active');
-    if (user) { setState({ user, accessType: null }); return true; }
+    const user = users.find(
+      u =>
+        u.code === normalizedCode &&
+        u.password === normalizedPassword &&
+        u.status === 'active' &&
+        u.role === 'admin',
+    );
+    if (user) {
+      setState({ user, accessType: 'admin' });
+      return true;
+    }
     return false;
   }, []);
 

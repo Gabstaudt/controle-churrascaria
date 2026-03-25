@@ -1,4 +1,4 @@
-import { useState } from 'react';
+﻿import { useState } from 'react';
 import { ensureFreezers, getConfig, setFreezers, addAuditLog } from '@/lib/store';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
@@ -26,7 +26,7 @@ export default function StockModule() {
     setFreezers(updated);
     addAuditLog({
       action: 'Edição manual de estoque', type: 'stock',
-      details: `Freezer ${editingItem.freezerId}: ${f.items[editingItem.idx]?.productName || 'item removido'} de ${old} para ${editingItem.qty}`,
+      details: `Freezer ${editingItem.freezerId}: ${f.items[editingItem.idx]?.productCode || f.items[editingItem.idx]?.productName || 'item removido'} de ${old} para ${editingItem.qty}`,
       userId: user!.id, userName: user!.name, freezerId: editingItem.freezerId,
     });
     setEditingItem(null);
@@ -36,8 +36,8 @@ export default function StockModule() {
 
   const handleExport = () => {
     const rows: string[][] = [];
-    freezers.forEach(f => f.items.forEach(i => rows.push([String(f.id), i.productName, String(i.quantity)])));
-    exportCSV('estoque.csv', ['Freezer', 'Produto', 'Quantidade'], rows);
+    freezers.forEach(f => f.items.forEach(i => rows.push([String(f.id), i.productCode || i.productName, String(i.quantity)])));
+    exportCSV('estoque.csv', ['Freezer', 'Código da Bebida', 'Quantidade'], rows);
     toast.success('CSV exportado!');
   };
 
@@ -56,7 +56,7 @@ export default function StockModule() {
             <div className="space-y-2">
               {f.items.map((item, idx) => (
                 <div key={idx} className="flex items-center justify-between bg-secondary rounded p-2">
-                  <span className="text-sm text-foreground">{item.productName}</span>
+                  <span className="text-sm text-foreground">{item.productCode || item.productName}</span>
                   {editingItem?.freezerId === f.id && editingItem?.idx === idx ? (
                     <div className="flex items-center gap-2">
                       <Input type="number" className="w-20 h-8 bg-muted text-sm" value={editingItem.qty}
@@ -81,3 +81,4 @@ export default function StockModule() {
     </div>
   );
 }
+
