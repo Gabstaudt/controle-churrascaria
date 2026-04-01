@@ -281,6 +281,27 @@ Arquivos impactados:
 - `src/pages/EmployeePanel.tsx`
 - `src/components/admin/StockModule.tsx`
 
+### 19. Pipeline CI/CD com GitHub Actions
+
+- Frontend recebeu pipeline de CI para garantir qualidade em PRs e pushes:
+  - instalacao de dependencias
+  - lint
+  - testes
+  - build
+  - publicacao de artefato `dist`
+- Frontend recebeu pipeline de CD para deploy continuo no Netlify (branch `main`) e execucao manual (`workflow_dispatch`).
+- Deploy no Netlify via GitHub Actions com:
+  - `npx netlify-cli deploy --dir=dist --prod`
+  - uso de secrets: `NETLIFY_AUTH_TOKEN` e `NETLIFY_SITE_ID`
+- Pipeline configurado com:
+  - concorrencia para evitar execucoes duplicadas
+  - permissoes minimas por workflow
+  - timeout por job
+
+Arquivos impactados:
+- `.github/workflows/ci.yml`
+- `.github/workflows/cd.yml`
+
 ## Validacoes executadas
 
 - Build de producao executada apos as mudancas principais:
