@@ -266,6 +266,21 @@ Arquivos impactados no backend (`churras-api`):
 Arquivo impactado:
 - `src/components/admin/UsersModule.tsx`
 
+### 18. Historico lateral de movimentacoes no painel do funcionario
+
+- Integrada movimentacao do funcionario com API de estoque.
+- Ao retirar/adicionar produto, a tela do funcionario agora mostra ao lado:
+  - historico de produtos adicionados e retirados
+  - quem movimentou (nome/codigo)
+  - produto movimentado
+  - quantidade movimentada
+- Historico consumido de endpoint da API (`/api/stock/history`).
+
+Arquivos impactados:
+- `src/lib/api.ts`
+- `src/pages/EmployeePanel.tsx`
+- `src/components/admin/StockModule.tsx`
+
 ## Validacoes executadas
 
 - Build de producao executada apos as mudancas principais:

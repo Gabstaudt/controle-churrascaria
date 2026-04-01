@@ -27,10 +27,12 @@ export const api = {
     request<Product>(`/products/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) }),
 
   listStock: () => request<StockItem[]>('/stock'),
-  addStock: (query: string, quantity: number) =>
-    request<StockItem>('/stock/entry', { method: 'POST', body: JSON.stringify({ query, quantity }) }),
-  removeStock: (query: string, quantity: number) =>
-    request<{ success: true }>('/stock/exit', { method: 'POST', body: JSON.stringify({ query, quantity }) }),
+  listStockHistory: () =>
+    request<Array<{ id: string; type: 'entry' | 'exit'; productCode: string; productName: string; quantity: number; actorName: string; actorCode?: string; source: 'employee' | 'admin' | 'system'; timestamp: string }>>('/stock/history'),
+  addStock: (query: string, quantity: number, actor?: { actorName?: string; actorCode?: string; source?: 'employee' | 'admin' | 'system' }) =>
+    request<StockItem>('/stock/entry', { method: 'POST', body: JSON.stringify({ query, quantity, ...actor }) }),
+  removeStock: (query: string, quantity: number, actor?: { actorName?: string; actorCode?: string; source?: 'employee' | 'admin' | 'system' }) =>
+    request<{ success: true }>('/stock/exit', { method: 'POST', body: JSON.stringify({ query, quantity, ...actor }) }),
   updateStockQuantity: (productCode: string, quantity: number) =>
     request<{ success: true }>(`/stock/${encodeURIComponent(productCode)}`, {
       method: 'PATCH',

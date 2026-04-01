@@ -17,14 +17,20 @@ export default function EmployeePanel() {
   const [quantity, setQuantity] = useState(1);
   const [products, setProducts] = useState<Product[]>([]);
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
+  const [history, setHistory] = useState<Array<{ id: string; type: 'entry' | 'exit'; productCode: string; productName: string; quantity: number; actorName: string; actorCode?: string; timestamp: string }>>([]);
 
   const normalizedProductQuery = productQuery.trim().toUpperCase();
 
   const loadData = async () => {
     try {
-      const [approvedProducts, stock] = await Promise.all([api.listApprovedProducts(), api.listStock()]);
+      const [approvedProducts, stock, stockHistory] = await Promise.all([
+        api.listApprovedProducts(),
+        api.listStock(),
+        api.listStockHistory(),
+      ]);
       setProducts(approvedProducts);
       setStockItems(stock);
+      setHistory(stockHistory.slice(0, 20));
     } catch {
       toast.error('Falha ao conectar com a API de estoque');
     }
@@ -78,7 +84,11 @@ export default function EmployeePanel() {
 
     try {
       if (operation === 'restock') {
-        await api.addStock(product.code, quantity);
+        await api.addStock(product.code, quantity, {
+          actorName: employee.name,
+          actorCode: employee.code,
+          source: 'employee',
+        });
         addAuditLog({
           action: 'Reposicao de produto',
           type: 'stock',
@@ -88,7 +98,11 @@ export default function EmployeePanel() {
         });
         toast.success('Reposicao registrada com sucesso');
       } else {
-        await api.removeStock(product.code, quantity);
+        await api.removeStock(product.code, quantity, {
+          actorName: employee.name,
+          actorCode: employee.code,
+          source: 'employee',
+        });
         addAuditLog({
           action: 'Retirada de produto',
           type: 'stock',
@@ -234,20 +248,42 @@ export default function EmployeePanel() {
             </Button>
           </form>
 
-          <div className="glass-card p-5 lg:p-6">
-            <h2 className="font-display font-semibold text-foreground mb-3">Visao do Estoque</h2>
-            {stockItems.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Sem itens cadastrados.</p>
-            ) : (
-              <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {stockItems.map(item => (
-                  <div key={item.productId} className="bg-secondary rounded-md p-3 flex items-center justify-between">
-                    <span className="text-sm text-foreground">{item.productCode} - {item.productName}</span>
-                    <span className="text-xs text-muted-foreground">{item.quantity} un.</span>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="space-y-4">
+            <div className="glass-card p-5 lg:p-6">
+              <h2 className="font-display font-semibold text-foreground mb-3">Visao do Estoque</h2>
+              {stockItems.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sem itens cadastrados.</p>
+              ) : (
+                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  {stockItems.map(item => (
+                    <div key={item.productId} className="bg-secondary rounded-md p-3 flex items-center justify-between">
+                      <span className="text-sm text-foreground">{item.productCode} - {item.productName}</span>
+                      <span className="text-xs text-muted-foreground">{item.quantity} un.</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="glass-card p-5 lg:p-6">
+              <h2 className="font-display font-semibold text-foreground mb-3">Historico de Movimentacoes</h2>
+              {history.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Sem historico.</p>
+              ) : (
+                <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                  {history.map(h => (
+                    <div key={h.id} className="bg-secondary rounded-md p-3">
+                      <p className="text-sm text-foreground">
+                        {h.type === 'entry' ? 'Adicionado' : 'Retirado'}: {h.productName} ({h.productCode}) - {h.quantity} un.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Por: {h.actorName}{h.actorCode ? ` (${h.actorCode})` : ''} | {new Date(h.timestamp).toLocaleString('pt-BR')}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

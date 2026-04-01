@@ -72,7 +72,11 @@ export default function StockModule() {
     }
 
     try {
-      await api.addStock(selectedProduct.code, qtyValue);
+      await api.addStock(selectedProduct.code, qtyValue, {
+        actorName: user?.name || 'Admin',
+        actorCode: user?.code,
+        source: 'admin',
+      });
     } catch {
       toast.error('Nao foi possivel adicionar estoque na API');
       return;
