@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { getConfig, setConfig, ensureFreezers, addAuditLog } from '@/lib/store';
+import { getConfig, setConfig, addAuditLog } from '@/lib/store';
 import { useAuth } from '@/lib/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -17,9 +17,14 @@ export default function SettingsModule() {
 
   const save = () => {
     setConfig(config);
-    ensureFreezers(config.freezerCount);
-    addAuditLog({ action: 'Configurações atualizadas', type: 'system', details: `Freezers: ${config.freezerCount}`, userId: user!.id, userName: user!.name });
-    toast.success('Configurações salvas!');
+    addAuditLog({
+      action: 'Configuracoes atualizadas',
+      type: 'system',
+      details: 'Categorias e alertas atualizados',
+      userId: user!.id,
+      userName: user!.name,
+    });
+    toast.success('Configuracoes salvas!');
   };
 
   const addProdCat = () => {
@@ -43,7 +48,10 @@ export default function SettingsModule() {
   };
 
   const handleReset = () => {
-    if (resetConfirm !== 'RESETAR') { toast.error('Digite RESETAR para confirmar'); return; }
+    if (resetConfirm !== 'RESETAR') {
+      toast.error('Digite RESETAR para confirmar');
+      return;
+    }
     localStorage.clear();
     addAuditLog({ action: 'Sistema resetado', type: 'system', details: 'Reset completo', userId: user!.id, userName: user!.name });
     window.location.reload();
@@ -51,16 +59,7 @@ export default function SettingsModule() {
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-display font-bold text-foreground">Configurações do Sistema</h2>
-
-      <div className="glass-card p-4 space-y-4">
-        <h3 className="font-display font-semibold text-foreground">Freezers</h3>
-        <div className="flex items-center gap-3">
-          <label className="text-sm text-muted-foreground">Quantidade de freezers:</label>
-          <Input type="number" min="1" className="bg-secondary w-24" value={config.freezerCount}
-            onChange={e => setLocalConfig({ ...config, freezerCount: parseInt(e.target.value) || 1 })} />
-        </div>
-      </div>
+      <h2 className="text-2xl font-display font-bold text-foreground">Configuracoes do Sistema</h2>
 
       <div className="glass-card p-4 space-y-4">
         <h3 className="font-display font-semibold text-foreground">Categorias de Produtos</h3>
@@ -93,29 +92,37 @@ export default function SettingsModule() {
       </div>
 
       <div className="glass-card p-4 space-y-4">
-        <h3 className="font-display font-semibold text-foreground">Alertas de Licenças</h3>
+        <h3 className="font-display font-semibold text-foreground">Alertas de Licencas</h3>
         <div className="flex items-center gap-3">
-          <label className="text-sm text-muted-foreground">Dias de antecedência padrão:</label>
-          <Input type="number" min="1" className="bg-secondary w-24" value={config.defaultAlertDays}
-            onChange={e => setLocalConfig({ ...config, defaultAlertDays: parseInt(e.target.value) || 30 })} />
+          <label className="text-sm text-muted-foreground">Dias de antecedencia padrao:</label>
+          <Input
+            type="number"
+            min="1"
+            className="bg-secondary w-24"
+            value={config.defaultAlertDays}
+            onChange={e => setLocalConfig({ ...config, defaultAlertDays: parseInt(e.target.value) || 30 })}
+          />
         </div>
       </div>
 
-      <Button onClick={save} className="gradient-primary text-primary-foreground"><Save className="w-4 h-4 mr-2" />Salvar Configurações</Button>
+      <Button onClick={save} className="gradient-primary text-primary-foreground">
+        <Save className="w-4 h-4 mr-2" />
+        Salvar Configuracoes
+      </Button>
 
       <div className="glass-card p-4 border-l-4 border-l-destructive space-y-3">
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 text-destructive" />
           <h3 className="font-display font-semibold text-foreground">Zona de Perigo</h3>
         </div>
-        <p className="text-sm text-muted-foreground">Resetar todo o sistema. Esta ação não pode ser desfeita.</p>
+        <p className="text-sm text-muted-foreground">Resetar todo o sistema. Esta acao nao pode ser desfeita.</p>
         <Button variant="destructive" onClick={() => setShowReset(true)}>Resetar Sistema</Button>
       </div>
 
       <Dialog open={showReset} onOpenChange={setShowReset}>
         <DialogContent className="bg-card border-border">
           <DialogHeader><DialogTitle className="font-display text-destructive">Confirmar Reset</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Digite <strong className="text-foreground">RESETAR</strong> para confirmar a exclusão de todos os dados.</p>
+          <p className="text-sm text-muted-foreground">Digite <strong className="text-foreground">RESETAR</strong> para confirmar a exclusao de todos os dados.</p>
           <Input className="bg-secondary" value={resetConfirm} onChange={e => setResetConfirm(e.target.value)} />
           <DialogFooter>
             <Button variant="secondary" onClick={() => setShowReset(false)}>Cancelar</Button>

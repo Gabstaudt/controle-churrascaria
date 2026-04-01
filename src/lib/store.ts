@@ -5,6 +5,7 @@ export interface User {
   code: string;
   password: string;
   role: 'employee' | 'admin';
+  profileId?: string;
   position: string;
   status: 'active' | 'inactive';
   baseSalary: number;
@@ -52,9 +53,11 @@ export const DEFAULT_EMPLOYEE_CREDENTIALS = {
 
 export interface Product {
   id: string;
+  code: string;
   name: string;
   category: string;
   description: string;
+  price: number;
   status: 'approved' | 'pending' | 'rejected';
   createdBy: string;
   createdAt: string;
@@ -72,6 +75,8 @@ export interface Freezer {
   id: number;
   items: FreezerItem[];
 }
+
+export type StockItem = FreezerItem;
 
 export interface AuditLog {
   id: string;
@@ -175,6 +180,15 @@ export interface SystemConfig {
   defaultAlertDays: number;
 }
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  role: 'employee' | 'admin';
+  permissions: UserPermissions;
+  isSystem?: boolean;
+  createdAt: string;
+}
+
 // Helper functions
 function get<T>(key: string, fallback: T): T {
   try {
@@ -190,12 +204,56 @@ function set(key: string, value: unknown) {
 const uid = () => crypto.randomUUID();
 const now = () => new Date().toISOString();
 
+function normalizeText(value: string) {
+  return (value || '').trim().toUpperCase();
+}
+
+function toProductCode(value: string) {
+  const base = normalizeText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return base || 'PRODUTO';
+}
+
 // Users
 export function getUsers(): User[] {
   return get<User[]>('churras_users', []);
 }
 export function setUsers(users: User[]) { set('churras_users', users); }
 export function getUserByCode(code: string) { return getUsers().find(u => u.code === code); }
+export function getUserProfiles(): UserProfile[] { return get<UserProfile[]>('churras_profiles', []); }
+export function setUserProfiles(profiles: UserProfile[]) { set('churras_profiles', profiles); }
+
+export function initDefaultProfiles() {
+  const profiles = getUserProfiles();
+  const adminProfile = profiles.find(p => p.role === 'admin' && p.name === 'Administrador');
+  const employeeProfile = profiles.find(p => p.role === 'employee' && p.name === 'Funcionario');
+
+  if (!adminProfile) {
+    profiles.push({
+      id: uid(),
+      name: 'Administrador',
+      role: 'admin',
+      permissions: { ...DEFAULT_ADMIN_PERMISSIONS },
+      isSystem: true,
+      createdAt: now(),
+    });
+  }
+  if (!employeeProfile) {
+    profiles.push({
+      id: uid(),
+      name: 'Funcionario',
+      role: 'employee',
+      permissions: { ...DEFAULT_EMPLOYEE_PERMISSIONS },
+      isSystem: true,
+      createdAt: now(),
+    });
+  }
+
+  setUserProfiles(profiles);
+}
 export function getActiveEmployeeByCode(code: string) {
   const normalized = code.trim().toLowerCase();
   return getUsers().find(
@@ -216,18 +274,23 @@ export function getActiveEmployeeByCredentials(code: string, password: string) {
 }
 
 export function initDefaultAdmin() {
+  initDefaultProfiles();
+  const profiles = getUserProfiles();
+  const adminProfile = profiles.find(p => p.role === 'admin');
+  const employeeProfile = profiles.find(p => p.role === 'employee');
   const users = getUsers();
   const adminByCode = users.find(u => u.code === DEFAULT_ADMIN_CREDENTIALS.code);
   if (adminByCode) {
     adminByCode.password = DEFAULT_ADMIN_CREDENTIALS.password;
     adminByCode.role = 'admin';
+    adminByCode.profileId = adminProfile?.id;
     adminByCode.status = 'active';
-    adminByCode.permissions = { ...DEFAULT_ADMIN_PERMISSIONS };
+    adminByCode.permissions = adminProfile ? { ...adminProfile.permissions } : { ...DEFAULT_ADMIN_PERMISSIONS };
   } else {
     users.push({
       id: uid(), name: 'Administrador', code: DEFAULT_ADMIN_CREDENTIALS.code, password: DEFAULT_ADMIN_CREDENTIALS.password,
-      role: 'admin', position: 'Gerente', status: 'active', baseSalary: 5000,
-      createdAt: now(), permissions: { ...DEFAULT_ADMIN_PERMISSIONS },
+      role: 'admin', profileId: adminProfile?.id, position: 'Gerente', status: 'active', baseSalary: 5000,
+      createdAt: now(), permissions: adminProfile ? { ...adminProfile.permissions } : { ...DEFAULT_ADMIN_PERMISSIONS },
     });
   }
 
@@ -238,12 +301,12 @@ export function initDefaultAdmin() {
       name: 'Funcionario Exemplo',
       code: DEFAULT_EMPLOYEE_CREDENTIALS.code,
       password: DEFAULT_EMPLOYEE_CREDENTIALS.password,
-      role: 'employee',
+      role: 'employee', profileId: employeeProfile?.id,
       position: 'Atendente',
       status: 'active',
       baseSalary: 1800,
       createdAt: now(),
-      permissions: { ...DEFAULT_EMPLOYEE_PERMISSIONS },
+      permissions: employeeProfile ? { ...employeeProfile.permissions } : { ...DEFAULT_EMPLOYEE_PERMISSIONS },
     });
   }
 
@@ -251,8 +314,36 @@ export function initDefaultAdmin() {
 }
 
 // Products
-export function getProducts(): Product[] { return get('churras_products', []); }
+export function getProducts(): Product[] {
+  const products = get<Product[]>('churras_products', []);
+  return products.map(p => ({
+    ...p,
+    code: normalizeText(p.code || toProductCode(`${p.name}-${p.id.slice(0, 4)}`)),
+    price: Number.isFinite(p.price) ? p.price : 0,
+  }));
+}
 export function setProducts(p: Product[]) { set('churras_products', p); }
+
+export function getApprovedProducts(): Product[] {
+  return getProducts().filter(p => p.status === 'approved');
+}
+
+export function findApprovedProductByQuery(query: string): { product: Product | null; ambiguous: boolean } {
+  const normalizedQuery = normalizeText(query);
+  const products = getApprovedProducts();
+
+  const exact = products.filter(
+    p => normalizeText(p.code) === normalizedQuery || normalizeText(p.name) === normalizedQuery,
+  );
+  if (exact.length > 0) return { product: exact[0], ambiguous: false };
+
+  const partial = products.filter(
+    p => normalizeText(p.code).includes(normalizedQuery) || normalizeText(p.name).includes(normalizedQuery),
+  );
+  if (partial.length === 1) return { product: partial[0], ambiguous: false };
+  if (partial.length > 1) return { product: null, ambiguous: true };
+  return { product: null, ambiguous: false };
+}
 
 // Freezers
 export function getFreezers(): Freezer[] { return get('churras_freezers', []); }
@@ -265,6 +356,48 @@ export function ensureFreezers(count: number) {
   }
   setFreezers(freezers);
   return freezers;
+}
+
+function normalizeStockItems(items: StockItem[]): StockItem[] {
+  const merged = new Map<string, StockItem>();
+  for (const item of items) {
+    if (!item) continue;
+    const code = (item.productCode || item.productName || '').trim().toUpperCase();
+    const name = (item.productName || code).trim();
+    const qty = Number(item.quantity) || 0;
+    if (!code || qty <= 0) continue;
+
+    const existing = merged.get(code);
+    if (existing) {
+      existing.quantity += qty;
+      if (name && (!existing.productName || existing.productName === existing.productCode)) {
+        existing.productName = name;
+      }
+    } else {
+      merged.set(code, {
+        productId: item.productId || uid(),
+        productCode: code,
+        productName: name || code,
+        quantity: qty,
+      });
+    }
+  }
+  return Array.from(merged.values());
+}
+
+export function getStockItems(): StockItem[] {
+  const stock = get<StockItem[]>('churras_stock', []);
+  if (stock.length > 0) return normalizeStockItems(stock);
+
+  // Backward compatibility: migrate old per-freezer stock to a single stock list.
+  const fromFreezers = getFreezers().flatMap(f => f.items || []);
+  const migrated = normalizeStockItems(fromFreezers);
+  if (migrated.length > 0) set('churras_stock', migrated);
+  return migrated;
+}
+
+export function setStockItems(items: StockItem[]) {
+  set('churras_stock', normalizeStockItems(items));
 }
 
 // Audit

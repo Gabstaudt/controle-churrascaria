@@ -1,138 +1,114 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
-import { addAuditLog, ensureFreezers, getActiveEmployeeByCode, getConfig, getFreezers, setFreezers } from '@/lib/store';
+import { addAuditLog, getActiveEmployeeByCode, type Product, type StockItem } from '@/lib/store';
+import { api } from '@/lib/api';
 import { ArrowLeft, Minus, Plus, Snowflake, UserCheck } from 'lucide-react';
 
 type Operation = 'restock' | 'withdraw';
 
 export default function EmployeePanel() {
-  const config = getConfig();
   const [operation, setOperation] = useState<Operation>('withdraw');
   const [employeeCode, setEmployeeCode] = useState('');
-  const [freezerNum, setFreezerNum] = useState('1');
-  const [beverageQuery, setBeverageQuery] = useState('');
-  const [beverageName, setBeverageName] = useState('');
+  const [productQuery, setProductQuery] = useState('');
+  const [selectedProductCode, setSelectedProductCode] = useState('');
   const [quantity, setQuantity] = useState(1);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [stockItems, setStockItems] = useState<StockItem[]>([]);
 
-  const normalizedBeverageQuery = beverageQuery.trim().toUpperCase();
+  const normalizedProductQuery = productQuery.trim().toUpperCase();
 
-  const freezerItems = useMemo(() => {
-    const number = parseInt(freezerNum);
-    if (!number || number < 1 || number > config.freezerCount) return [];
-    const freezers = getFreezers();
-    return freezers.find(f => f.id === number)?.items ?? [];
-  }, [freezerNum, config.freezerCount]);
+  const loadData = async () => {
+    try {
+      const [approvedProducts, stock] = await Promise.all([api.listApprovedProducts(), api.listStock()]);
+      setProducts(approvedProducts);
+      setStockItems(stock);
+    } catch {
+      toast.error('Falha ao conectar com a API de estoque');
+    }
+  };
+
+  useEffect(() => {
+    void loadData();
+  }, []);
+
+  const selectedProduct = products.find(p => p.code === selectedProductCode) || null;
+  const matchingProducts = useMemo(() => {
+    if (!normalizedProductQuery) return products.slice(0, 6);
+    return products
+      .filter(
+        p =>
+          p.code.toUpperCase().includes(normalizedProductQuery) ||
+          p.name.toUpperCase().includes(normalizedProductQuery),
+      )
+      .slice(0, 6);
+  }, [products, normalizedProductQuery]);
 
   const updateQuantity = (delta: number) => {
     setQuantity(prev => Math.max(1, prev + delta));
   };
 
-  const findBeverageMatch = (items: { productCode: string; productName: string }[]) => {
-    const query = normalizedBeverageQuery;
-    const exactMatches = items.filter(
-      item => item.productCode.trim().toUpperCase() === query || item.productName.trim().toUpperCase() === query,
-    );
-    if (exactMatches.length > 0) return { item: exactMatches[0], ambiguous: false };
-
-    const partialMatches = items.filter(
-      item => item.productCode.trim().toUpperCase().includes(query) || item.productName.trim().toUpperCase().includes(query),
-    );
-    if (partialMatches.length === 1) return { item: partialMatches[0], ambiguous: false };
-    if (partialMatches.length > 1) return { item: null, ambiguous: true };
-    return { item: null, ambiguous: false };
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const employee = getActiveEmployeeByCode(employeeCode);
     if (!employee) {
       toast.error('Codigo do funcionario invalido ou inativo');
       return;
     }
-
-    const number = parseInt(freezerNum);
-    if (!number || number < 1 || number > config.freezerCount) {
-      toast.error(`Freezer invalido (1-${config.freezerCount})`);
+    if (!normalizedProductQuery && !selectedProduct) {
+      toast.error('Informe codigo ou nome do produto');
       return;
     }
 
-    if (!normalizedBeverageQuery) {
-      toast.error('Informe o codigo ou nome da bebida');
+    const product =
+      selectedProduct ||
+      products.find(
+        p =>
+          p.code.toUpperCase() === normalizedProductQuery ||
+          p.name.toUpperCase() === normalizedProductQuery,
+      ) ||
+      null;
+
+    if (!product) {
+      toast.error('Produto nao encontrado. Solicite cadastro/aprovacao no admin');
       return;
     }
 
-    const freezers = ensureFreezers(config.freezerCount);
-    const freezer = freezers.find(f => f.id === number)!;
-    const { item: existingItem, ambiguous } = findBeverageMatch(freezer.items);
-    if (ambiguous) {
-      toast.error('Mais de uma bebida encontrada. Refine a busca com codigo ou nome completo');
-      return;
-    }
-
-    if (operation === 'restock') {
-      if (existingItem) {
-        if (beverageName.trim()) {
-          existingItem.productName = beverageName.trim();
-        }
-        existingItem.quantity += quantity;
-      } else {
-        const normalizedName = beverageName.trim();
-        if (!normalizedName) {
-          toast.error('Informe o nome da bebida para cadastrar novo item');
-          return;
-        }
-        freezer.items.push({
-          productId: crypto.randomUUID(),
-          productCode: normalizedBeverageQuery,
-          productName: normalizedName,
-          quantity,
+    try {
+      if (operation === 'restock') {
+        await api.addStock(product.code, quantity);
+        addAuditLog({
+          action: 'Reposicao de produto',
+          type: 'stock',
+          details: `API estoque: ${product.code} - ${product.name} (+${quantity})`,
+          userId: employee.id,
+          userName: employee.name,
         });
+        toast.success('Reposicao registrada com sucesso');
+      } else {
+        await api.removeStock(product.code, quantity);
+        addAuditLog({
+          action: 'Retirada de produto',
+          type: 'stock',
+          details: `API estoque: ${product.code} - ${product.name} (-${quantity})`,
+          userId: employee.id,
+          userName: employee.name,
+        });
+        toast.success(
+          `Produto retirado com sucesso - Funcionario: ${employee.name} | Produto: ${product.name} (${product.code}) | Quantidade: ${quantity}`,
+        );
       }
-      addAuditLog({
-        action: 'Reposicao de bebida',
-        type: 'stock',
-        details: `Freezer ${number}: busca ${normalizedBeverageQuery} (+${quantity})`,
-        userId: employee.id,
-        userName: employee.name,
-        freezerId: number,
-      });
-      toast.success('Reposicao registrada com sucesso');
-    } else {
-      if (!existingItem) {
-        toast.error('Bebida nao encontrada no freezer selecionado');
-        return;
-      }
-      if (existingItem.quantity < quantity) {
-        toast.error('Quantidade insuficiente no freezer');
-        return;
-      }
-      const beverageLabel = existingItem.productName
-        ? `${existingItem.productName} (${existingItem.productCode || normalizedBeverageQuery})`
-        : (existingItem.productCode || normalizedBeverageQuery);
-      existingItem.quantity -= quantity;
-      if (existingItem.quantity === 0) {
-        freezer.items = freezer.items.filter(item => item !== existingItem);
-      }
-      addAuditLog({
-        action: 'Retirada de bebida',
-        type: 'stock',
-        details: `Freezer ${number}: busca ${normalizedBeverageQuery} (-${quantity})`,
-        userId: employee.id,
-        userName: employee.name,
-        freezerId: number,
-      });
-      toast.success(
-        `Bebida retirada com sucesso - Funcionario: ${employee.name} | Bebida: ${beverageLabel} | Quantidade: ${quantity}`,
-      );
+    } catch {
+      toast.error(operation === 'restock' ? 'Falha ao registrar reposicao na API' : 'Falha ao registrar retirada na API');
+      return;
     }
 
-    setFreezers(freezers);
-    setBeverageQuery('');
-    setBeverageName('');
+    setProductQuery('');
+    setSelectedProductCode('');
     setQuantity(1);
+    await loadData();
   };
 
   return (
@@ -145,7 +121,7 @@ export default function EmployeePanel() {
             </div>
             <div>
               <h1 className="text-xl lg:text-2xl font-display font-bold text-foreground">Area do Funcionario</h1>
-              <p className="text-xs lg:text-sm text-muted-foreground">Informe seu codigo, a bebida e a quantidade para retirar ou repor</p>
+              <p className="text-xs lg:text-sm text-muted-foreground">Movimente produtos cadastrados no admin (codigo ou nome)</p>
             </div>
           </div>
           <Button asChild variant="secondary" size="sm">
@@ -164,64 +140,61 @@ export default function EmployeePanel() {
                 onClick={() => setOperation('withdraw')}
                 className={`rounded-md border p-3 text-sm transition-colors ${operation === 'withdraw' ? 'border-primary bg-primary/15 text-primary' : 'border-border bg-secondary text-muted-foreground hover:text-foreground'}`}
               >
-                Retirar Bebida
+                Retirar Produto
               </button>
               <button
                 type="button"
                 onClick={() => setOperation('restock')}
                 className={`rounded-md border p-3 text-sm transition-colors ${operation === 'restock' ? 'border-primary bg-primary/15 text-primary' : 'border-border bg-secondary text-muted-foreground hover:text-foreground'}`}
               >
-                Repor Bebida
+                Repor Produto
               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground">Codigo do Funcionario</label>
-                <div className="relative">
-                  <UserCheck className="absolute left-3 top-3.5 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    value={employeeCode}
-                    onChange={e => setEmployeeCode(e.target.value)}
-                    placeholder="Ex: funcionario"
-                    className="pl-10 bg-secondary"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground">Freezer</label>
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-muted-foreground">Codigo do Funcionario</label>
+              <div className="relative">
+                <UserCheck className="absolute left-3 top-3.5 w-4 h-4 text-muted-foreground" />
                 <Input
-                  type="number"
-                  min="1"
-                  max={config.freezerCount}
-                  value={freezerNum}
-                  onChange={e => setFreezerNum(e.target.value)}
-                  className="bg-secondary"
+                  value={employeeCode}
+                  onChange={e => setEmployeeCode(e.target.value)}
+                  placeholder="Ex: funcionario"
+                  className="pl-10 bg-secondary"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-muted-foreground">Codigo ou nome da bebida</label>
+              <label className="text-xs font-medium text-muted-foreground">Codigo ou nome do produto</label>
               <Input
-                value={beverageQuery}
-                onChange={e => setBeverageQuery(e.target.value)}
-                placeholder="Ex: COKE-350 ou Coca-Cola"
+                value={productQuery}
+                onChange={e => {
+                  setProductQuery(e.target.value);
+                  setSelectedProductCode('');
+                }}
+                placeholder="Ex: CERVEJA-LATA ou Cerveja"
                 className="bg-secondary"
               />
-            </div>
-
-            {operation === 'restock' && (
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-muted-foreground">Nome da Bebida (novo item)</label>
-                <Input
-                  value={beverageName}
-                  onChange={e => setBeverageName(e.target.value)}
-                  placeholder="Ex: Coca-Cola 350ml"
-                  className="bg-secondary"
-                />
+              <div className="rounded-md border border-border bg-secondary max-h-40 overflow-y-auto">
+                {matchingProducts.length === 0 ? (
+                  <p className="px-3 py-2 text-xs text-muted-foreground">Nenhum produto encontrado</p>
+                ) : (
+                  matchingProducts.map(p => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setProductQuery(p.code);
+                        setSelectedProductCode(p.code);
+                      }}
+                      className={`w-full text-left px-3 py-2 border-b border-border last:border-b-0 transition-colors ${selectedProductCode === p.code ? 'bg-primary/15' : 'hover:bg-muted'}`}
+                    >
+                      <p className="text-sm text-foreground">{p.code} - {p.name}</p>
+                    </button>
+                  ))
+                )}
               </div>
-            )}
+            </div>
 
             <div className="space-y-2">
               <label className="text-xs font-medium text-muted-foreground">Quantidade</label>
@@ -262,14 +235,14 @@ export default function EmployeePanel() {
           </form>
 
           <div className="glass-card p-5 lg:p-6">
-            <h2 className="font-display font-semibold text-foreground mb-3">Visao do Freezer {freezerNum}</h2>
-            {freezerItems.length === 0 ? (
+            <h2 className="font-display font-semibold text-foreground mb-3">Visao do Estoque</h2>
+            {stockItems.length === 0 ? (
               <p className="text-sm text-muted-foreground">Sem itens cadastrados.</p>
             ) : (
               <div className="space-y-2 max-h-[420px] overflow-y-auto pr-1">
-                {freezerItems.map(item => (
+                {stockItems.map(item => (
                   <div key={item.productId} className="bg-secondary rounded-md p-3 flex items-center justify-between">
-                    <span className="text-sm text-foreground">{item.productCode || item.productName} - {item.productName}</span>
+                    <span className="text-sm text-foreground">{item.productCode} - {item.productName}</span>
                     <span className="text-xs text-muted-foreground">{item.quantity} un.</span>
                   </div>
                 ))}
