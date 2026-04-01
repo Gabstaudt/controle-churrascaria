@@ -61,7 +61,7 @@ export default function LoginPage() {
         </form>
 
         <Button asChild variant="secondary" className="w-full mt-3">
-          <Link to="/freezer">
+          <Link to="/funcionario">
             <Snowflake className="w-4 h-4 mr-2" />
             Área de Freezer (Funcionários)
           </Link>

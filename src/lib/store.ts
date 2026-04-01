@@ -203,6 +203,18 @@ export function getActiveEmployeeByCode(code: string) {
   );
 }
 
+export function getActiveEmployeeByCredentials(code: string, password: string) {
+  const normalizedCode = code.trim().toLowerCase();
+  const normalizedPassword = password.trim();
+  return getUsers().find(
+    u =>
+      u.code.trim().toLowerCase() === normalizedCode &&
+      u.password === normalizedPassword &&
+      u.role === 'employee' &&
+      u.status === 'active',
+  );
+}
+
 export function initDefaultAdmin() {
   const users = getUsers();
   const adminByCode = users.find(u => u.code === DEFAULT_ADMIN_CREDENTIALS.code);
