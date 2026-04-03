@@ -8,6 +8,14 @@ import { toast } from 'sonner';
 import { exportCSV } from '@/lib/export-utils';
 import { Plus, Download, Eye } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { api } from '@/lib/api';
+
+type PendingExit = {
+  id: string;
+  barcode: string;
+  productName: string;
+  productPrice: number;
+};
 
 export default function CashModule() {
   const { user } = useAuth();
@@ -18,6 +26,8 @@ export default function CashModule() {
   const [manualCount, setManualCount] = useState('');
   const [notes, setNotes] = useState('');
   const [viewClosing, setViewClosing] = useState<CashClosing | null>(null);
+  const [scanInput, setScanInput] = useState('');
+  const [checkoutItems, setCheckoutItems] = useState<PendingExit[]>([]);
 
   const addEntry = () => {
     if (!entryForm.category || !entryForm.value) { toast.error('Preencha categoria e valor'); return; }
@@ -48,6 +58,63 @@ export default function CashModule() {
     toast.success('Caixa fechado!');
   };
 
+  const addScannedBarcode = async () => {
+    const code = scanInput.trim();
+    if (!code) return;
+    if (checkoutItems.some(item => item.barcode === code)) {
+      toast.error('Etiqueta ja adicionada na conta');
+      setScanInput('');
+      return;
+    }
+    try {
+      const exit = await api.findStockExitByBarcode(code);
+      if (exit.status === 'paid') {
+        toast.error('Etiqueta ja foi paga');
+        setScanInput('');
+        return;
+      }
+      setCheckoutItems(prev => [...prev, {
+        id: exit.id,
+        barcode: exit.barcode,
+        productName: exit.productName,
+        productPrice: exit.productPrice,
+      }]);
+      setScanInput('');
+    } catch {
+      toast.error('Etiqueta nao encontrada');
+    }
+  };
+
+  const removeCheckoutItem = (barcode: string) => {
+    setCheckoutItems(prev => prev.filter(item => item.barcode !== barcode));
+  };
+
+  const checkoutTotal = checkoutItems.reduce((sum, item) => sum + item.productPrice, 0);
+
+  const finalizeCheckout = async () => {
+    if (checkoutItems.length === 0) {
+      toast.error('Nenhuma etiqueta lida');
+      return;
+    }
+    try {
+      const result = await api.finalizeStockCheckout(
+        checkoutItems.map(item => item.barcode),
+        user?.name,
+      );
+      setCheckoutItems([]);
+      toast.success(`Pagamento finalizado: ${result.paidCount} item(ns) | Total R$ ${result.total.toFixed(2)}`);
+      addAuditLog({
+        action: 'Pagamento por etiquetas',
+        type: 'cash',
+        details: `${result.paidCount} item(ns) | Total R$ ${result.total.toFixed(2)}`,
+        userId: user!.id,
+        userName: user!.name,
+      });
+    } catch {
+      toast.error('Falha ao finalizar pagamento');
+    }
+  };
+
   const exportClosing = (c: CashClosing) => {
     const rows = c.entries.map(e => [e.category, e.description, e.type === 'income' ? 'Entrada' : 'Saída', String(e.value), new Date(e.timestamp).toLocaleString('pt-BR')]);
     rows.push(['', '', '', '', '']);
@@ -62,6 +129,53 @@ export default function CashModule() {
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-display font-bold text-foreground">Fechamento de Caixa</h2>
+
+      <div className="glass-card p-4 space-y-4">
+        <h3 className="font-display font-semibold text-foreground">Pagamento por Etiquetas</h3>
+        <p className="text-xs text-muted-foreground">
+          Passe o leitor no campo abaixo. Cada leitura adiciona um item unico da comanda.
+        </p>
+        <div className="flex gap-2">
+          <Input
+            value={scanInput}
+            onChange={e => setScanInput(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                void addScannedBarcode();
+              }
+            }}
+            placeholder="Escaneie o codigo de barras da etiqueta"
+            className="bg-secondary"
+          />
+          <Button onClick={() => void addScannedBarcode()}>Adicionar</Button>
+        </div>
+
+        {checkoutItems.length > 0 ? (
+          <div className="space-y-2">
+            {checkoutItems.map(item => (
+              <div key={item.id} className="flex items-center justify-between bg-secondary rounded p-2">
+                <div>
+                  <p className="text-sm text-foreground">{item.productName}</p>
+                  <p className="text-xs text-muted-foreground">{item.barcode}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <p className="text-sm text-foreground">R$ {item.productPrice.toFixed(2)}</p>
+                  <Button size="sm" variant="ghost" onClick={() => removeCheckoutItem(item.barcode)}>Remover</Button>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center justify-between border-t border-border pt-2">
+              <p className="font-semibold text-foreground">Total da conta: R$ {checkoutTotal.toFixed(2)}</p>
+              <Button onClick={() => void finalizeCheckout()} className="gradient-primary text-primary-foreground">
+                Finalizar pagamento
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Nenhuma etiqueta lida.</p>
+        )}
+      </div>
 
       <div className="glass-card p-4 space-y-4">
         <h3 className="font-display font-semibold text-foreground">Novo Lançamento</h3>

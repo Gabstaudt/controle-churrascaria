@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { Plus, Settings2, UserCircle2 } from 'lucide-react';
+import EmployeeRhDetail from '@/components/admin/EmployeeRhDetail';
 
 const EMPTY_PERMISSIONS: UserPermissions = { ...DEFAULT_EMPLOYEE_PERMISSIONS };
 
@@ -44,6 +45,7 @@ export default function UsersModule() {
   const [showPermissions, setShowPermissions] = useState(false);
   const [showProfileEditor, setShowProfileEditor] = useState(false);
   const [profileForm, setProfileForm] = useState<ProfileForm>(defaultProfileForm);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [createForm, setCreateForm] = useState({
     name: '',
     code: '',
@@ -67,6 +69,7 @@ export default function UsersModule() {
     () => new Map(profiles.map(p => [p.id, p])),
     [profiles],
   );
+  const selectedUser = useMemo(() => users.find(u => u.id === selectedUserId) || null, [users, selectedUserId]);
 
   const openCreate = () => {
     const defaultProfile = profiles.find(p => p.role === 'employee') || profiles[0];
@@ -230,6 +233,19 @@ export default function UsersModule() {
   };
 
   const permissionKeys = Object.keys(DEFAULT_ADMIN_PERMISSIONS) as (keyof UserPermissions)[];
+  if (selectedUser) {
+    return (
+      <EmployeeRhDetail
+        user={selectedUser}
+        profileName={selectedUser.profileId ? profileMap.get(selectedUser.profileId)?.name : undefined}
+        onBack={() => setSelectedUserId(null)}
+        onToggleStatus={() => {
+          toggleStatus(selectedUser.id);
+          refresh();
+        }}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -252,19 +268,17 @@ export default function UsersModule() {
           {users.map(u => {
             const profile = u.profileId ? profileMap.get(u.profileId) : null;
             return (
-              <div key={u.id} className="rounded-md border border-border bg-secondary px-3 py-3">
-                <div>
-                  <p className="font-medium text-foreground">{u.name} <span className="text-xs text-muted-foreground">({u.code})</span></p>
-                  <p className="text-xs text-muted-foreground">
-                    {profile?.name || (u.role === 'admin' ? 'Administrador' : 'Funcionario')} | {u.position || '-'} | {u.status === 'active' ? 'Ativo' : 'Inativo'}
-                  </p>
-                </div>
-                <div className="mt-2">
-                  <Button size="sm" variant="ghost" onClick={() => toggleStatus(u.id)}>
-                    {u.status === 'active' ? 'Desativar' : 'Ativar'}
-                  </Button>
-                </div>
-              </div>
+              <button
+                key={u.id}
+                type="button"
+                onClick={() => setSelectedUserId(u.id)}
+                className="w-full rounded-md border border-border bg-secondary px-3 py-3 text-left hover:bg-secondary/80 transition-colors"
+              >
+                <p className="font-medium text-foreground">{u.name} <span className="text-xs text-muted-foreground">({u.code})</span></p>
+                <p className="text-xs text-muted-foreground">
+                  {profile?.name || (u.role === 'admin' ? 'Administrador' : 'Funcionario')} | {u.position || '-'} | {u.status === 'active' ? 'Ativo' : 'Inativo'}
+                </p>
+              </button>
             );
           })}
           {users.length === 0 && <p className="text-sm text-muted-foreground px-2 py-4">Nenhum usuario cadastrado</p>}

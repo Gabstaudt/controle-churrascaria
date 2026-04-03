@@ -105,6 +105,40 @@ export interface PayrollItem {
   date: string;
 }
 
+export interface EmployeeDocument {
+  id: string;
+  title: string;
+  category: string;
+  description: string;
+  referenceUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  fileDataUrl?: string;
+  fileSize?: number;
+  createdAt: string;
+}
+
+export interface EmployeeNote {
+  id: string;
+  content: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface EmployeePayrollMonth {
+  id: string;
+  monthKey: string; // YYYY-MM
+  baseSalary: number;
+  voucherQuantity: number;
+  voucherAmount: number;
+  paidCash: number;
+  paidBank: number;
+  bonuses: number;
+  discounts: number;
+  notes: string;
+  updatedAt: string;
+}
+
 export interface CashEntry {
   id: string;
   category: string;
@@ -415,6 +449,28 @@ export function setVouchers(userId: string, v: Voucher[]) { set(`churras_voucher
 // Payroll items per user
 export function getPayrollItems(userId: string): PayrollItem[] { return get(`churras_payroll_${userId}`, []); }
 export function setPayrollItems(userId: string, items: PayrollItem[]) { set(`churras_payroll_${userId}`, items); }
+
+// Employee RH detail data
+export function getEmployeeDocuments(userId: string): EmployeeDocument[] {
+  return get<EmployeeDocument[]>(`churras_employee_docs_${userId}`, []);
+}
+export function setEmployeeDocuments(userId: string, docs: EmployeeDocument[]) {
+  set(`churras_employee_docs_${userId}`, docs);
+}
+
+export function getEmployeeNotes(userId: string): EmployeeNote[] {
+  return get<EmployeeNote[]>(`churras_employee_notes_${userId}`, []);
+}
+export function setEmployeeNotes(userId: string, notes: EmployeeNote[]) {
+  set(`churras_employee_notes_${userId}`, notes);
+}
+
+export function getEmployeePayrollMonths(userId: string): EmployeePayrollMonth[] {
+  return get<EmployeePayrollMonth[]>(`churras_employee_payroll_months_${userId}`, []);
+}
+export function setEmployeePayrollMonths(userId: string, months: EmployeePayrollMonth[]) {
+  set(`churras_employee_payroll_months_${userId}`, months);
+}
 
 // Cash
 export function getCashClosings(): CashClosing[] { return get('churras_cash', []); }

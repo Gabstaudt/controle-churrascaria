@@ -6,8 +6,12 @@ import { toast } from 'sonner';
 import { addAuditLog, getActiveEmployeeByCode, type Product, type StockItem } from '@/lib/store';
 import { api } from '@/lib/api';
 import { ArrowLeft, Minus, Plus, Snowflake, UserCheck } from 'lucide-react';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import JsBarcode from 'jsbarcode';
+import BarcodeLabel from '@/components/BarcodeLabel';
 
 type Operation = 'restock' | 'withdraw';
+type ExitLabel = { id: string; barcode: string; productName: string; productPrice: number };
 
 export default function EmployeePanel() {
   const [operation, setOperation] = useState<Operation>('withdraw');
@@ -18,6 +22,8 @@ export default function EmployeePanel() {
   const [products, setProducts] = useState<Product[]>([]);
   const [stockItems, setStockItems] = useState<StockItem[]>([]);
   const [history, setHistory] = useState<Array<{ id: string; type: 'entry' | 'exit'; productCode: string; productName: string; quantity: number; actorName: string; actorCode?: string; timestamp: string }>>([]);
+  const [labelsToPrint, setLabelsToPrint] = useState<ExitLabel[]>([]);
+  const [showPrintDialog, setShowPrintDialog] = useState(false);
 
   const normalizedProductQuery = productQuery.trim().toUpperCase();
 
@@ -98,7 +104,7 @@ export default function EmployeePanel() {
         });
         toast.success('Reposicao registrada com sucesso');
       } else {
-        await api.removeStock(product.code, quantity, {
+        const result = await api.removeStock(product.code, quantity, {
           actorName: employee.name,
           actorCode: employee.code,
           source: 'employee',
@@ -113,6 +119,15 @@ export default function EmployeePanel() {
         toast.success(
           `Produto retirado com sucesso - Funcionario: ${employee.name} | Produto: ${product.name} (${product.code}) | Quantidade: ${quantity}`,
         );
+        setLabelsToPrint(
+          result.exits.map(exit => ({
+            id: exit.id,
+            barcode: exit.barcode,
+            productName: exit.productName,
+            productPrice: exit.productPrice,
+          })),
+        );
+        setShowPrintDialog(true);
       }
     } catch {
       toast.error(operation === 'restock' ? 'Falha ao registrar reposicao na API' : 'Falha ao registrar retirada na API');
@@ -123,6 +138,59 @@ export default function EmployeePanel() {
     setSelectedProductCode('');
     setQuantity(1);
     await loadData();
+  };
+
+  const handlePrintLabels = () => {
+    if (labelsToPrint.length === 0) return;
+    const barcodeSvgs = labelsToPrint.map(label => {
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      JsBarcode(svg, label.barcode, {
+        format: 'CODE128',
+        displayValue: false,
+        height: 52,
+        margin: 0,
+        width: 1.7,
+      });
+      return svg.outerHTML;
+    });
+
+    const html = `
+      <html>
+        <head>
+          <title>Etiquetas</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 8px; }
+            .label { width: 240px; border: 1px dashed #ccc; padding: 8px; margin-bottom: 8px; }
+            .name { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+            .price { font-size: 15px; margin-bottom: 4px; }
+            .barcode { width: 100%; height: 54px; }
+          </style>
+        </head>
+        <body>
+          ${labelsToPrint
+            .map(
+              (label, index) => `
+                <div class="label">
+                  <div class="name">${label.productName}</div>
+                  <div class="price">R$ ${label.productPrice.toFixed(2)}</div>
+                  <div class="barcode">${barcodeSvgs[index]}</div>
+                </div>
+              `,
+            )
+            .join('')}
+          <script>window.onload = () => { window.print(); };</script>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank', 'width=480,height=720');
+    if (!printWindow) {
+      toast.error('Nao foi possivel abrir a janela de impressao');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(html);
+    printWindow.document.close();
   };
 
   return (
@@ -287,6 +355,27 @@ export default function EmployeePanel() {
           </div>
         </div>
       </div>
+
+      <Dialog open={showPrintDialog} onOpenChange={setShowPrintDialog}>
+        <DialogContent className="bg-card border-border max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="font-display">Etiquetas da retirada</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
+            {labelsToPrint.map(label => (
+              <div key={label.id} className="rounded border border-border bg-secondary p-3 w-full md:w-72">
+                <p className="font-semibold text-foreground">{label.productName}</p>
+                <p className="text-sm text-foreground mb-2">R$ {label.productPrice.toFixed(2)}</p>
+                <BarcodeLabel value={label.barcode} className="w-full h-[54px]" />
+              </div>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setShowPrintDialog(false)}>Fechar</Button>
+            <Button onClick={handlePrintLabels} className="gradient-primary text-primary-foreground">Imprimir etiquetas</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
